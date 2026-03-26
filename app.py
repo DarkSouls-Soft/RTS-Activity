@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +11,13 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+from update_data import (
+    UpdateConfig,
+    append_segment,
+    ensure_segments_file,
+    load_segments,
+    update_control_daily_csv,
+)
 
 BASE_DIR = Path(__file__).resolve().parent
 OUTPUT_DIR = BASE_DIR / 'rts_activity_outputs'
@@ -17,6 +25,8 @@ METRICS_PATH = OUTPUT_DIR / 'metrics.json'
 PREDICTIONS_PATH = OUTPUT_DIR / 'predictions.csv'
 MASTER_DATA_PATH = BASE_DIR / 'RTS_daily_RV_sample.csv'
 PIPELINE_SCRIPT = BASE_DIR / 'rts_activity_pipeline.py'
+SEGMENTS_PATH = BASE_DIR / 'moex_contract_segments.json'
+CONTROL_DATA_PATH = BASE_DIR / 'moex_control_daily.csv'
 
 PERIOD_LABELS = {
     'test': 'Тестовый период 2025',
@@ -362,6 +372,20 @@ def rename_table_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 
 
+@st.cache_data(show_spinner=False)
+def load_segments_df(path: str) -> pd.DataFrame:
+    segments = ensure_segments_file(path)
+    rows = [
+        {
+            'Контракт': seg.security,
+            'Начало': seg.start_date,
+            'Конец': seg.end_date or 'открытый период',
+        }
+        for seg in segments
+    ]
+    return pd.DataFrame(rows)
+
+
 def describe_source(selected_period: str) -> str:
     if selected_period == 'test':
         return 'Источник: публичный master sample dataset'
@@ -370,6 +394,43 @@ def describe_source(selected_period: str) -> str:
     if selected_period == 'oos_all':
         return 'Источник: объединение тестового и контрольного периодов'
     return 'Источник: публичный сниппет 2023-2026 + доступные прогнозы вне обучающего периода'
+
+
+def run_pipeline_script(script_path: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run([sys.executable, str(script_path)], capture_output=True, text=True)
+
+
+def refresh_all_cached_data() -> None:
+    st.cache_data.clear()
+
+
+def refresh_control_data(
+    segments_path: Path,
+    output_path: Path,
+    rerun_pipeline_after_update: bool,
+    pipeline_path: Path,
+) -> tuple[bool, str]:
+    cfg = UpdateConfig(
+        output_path=str(output_path),
+        segments_path=str(segments_path),
+        candle_interval=10,
+        engine='futures',
+        market='forts',
+        verbose=False,
+    )
+    segments = load_segments(str(segments_path))
+    merged = update_control_daily_csv(segments=segments, cfg=cfg)
+
+    message = f'Control-датасет обновлён: {len(merged)} строк.'
+    if rerun_pipeline_after_update:
+        result = run_pipeline_script(pipeline_path)
+        if result.returncode != 0:
+            error_text = result.stderr or result.stdout or 'Неизвестная ошибка пайплайна'
+            return False, f'{message}\n\nПайплайн завершился с ошибкой:\n{error_text}'
+        message += '\nПайплайн также успешно пересчитан.'
+
+    refresh_all_cached_data()
+    return True, message
 
 
 st.set_page_config(page_title='RTS Activity', layout='wide')
@@ -388,16 +449,99 @@ with st.sidebar:
     lookback_label = st.selectbox('Сколько последних наблюдений показывать', options=list(LOOKBACK_OPTIONS.keys()), index=5)
     lookback_rows = LOOKBACK_OPTIONS[lookback_label]
 
+    st.divider()
+    st.subheader('Новые периоды MOEX')
+    st.caption('Добавьте новый контрактный период и подтяните свежие данные в control-блок прямо из дэшборда.')
+
+    segments_path_str = st.text_input('segments.json', str(SEGMENTS_PATH))
+    control_path_str = st.text_input('control dataset', str(CONTROL_DATA_PATH))
+    rerun_after_update = st.checkbox('Пересчитать пайплайн после обновления периода', value=True)
+
+    try:
+        segments_df = load_segments_df(segments_path_str)
+        if not segments_df.empty:
+            st.dataframe(segments_df, use_container_width=True, hide_index=True)
+        else:
+            st.info('Контрактные сегменты пока не заданы.')
+    except Exception as exc:
+        st.warning(f'Не удалось прочитать список сегментов: {exc}')
+
+    with st.form('add_moex_period_form'):
+        security_code = st.text_input('Код контракта', value='', placeholder='Например, RIU6').strip().upper()
+        start_dt = st.date_input('Дата начала', value=date(2026, 3, 27), format='YYYY-MM-DD')
+        open_end = st.checkbox('Открытый период без даты окончания', value=True)
+        end_dt = None
+        if not open_end:
+            end_dt = st.date_input('Дата окончания', value=date(2026, 6, 18), format='YYYY-MM-DD')
+        add_period = st.form_submit_button('Добавить период и загрузить данные')
+
+    if add_period:
+        segments_path = Path(segments_path_str)
+        control_path = Path(control_path_str)
+        pipeline_script = Path(pipeline_path)
+        if not security_code:
+            st.error('Нужно указать код контракта.')
+        elif not open_end and end_dt is not None and end_dt < start_dt:
+            st.error('Дата окончания не может быть раньше даты начала.')
+        elif rerun_after_update and not pipeline_script.exists():
+            st.error(f'Pipeline script не найден: {pipeline_script}')
+        else:
+            try:
+                ensure_segments_file(str(segments_path))
+                append_segment(
+                    str(segments_path),
+                    security=security_code,
+                    start_date=start_dt.isoformat(),
+                    end_date=None if open_end or end_dt is None else end_dt.isoformat(),
+                )
+                with st.spinner('Загружаю новый период из MOEX ISS...'):
+                    ok, message = refresh_control_data(
+                        segments_path=segments_path,
+                        output_path=control_path,
+                        rerun_pipeline_after_update=rerun_after_update,
+                        pipeline_path=pipeline_script,
+                    )
+                if ok:
+                    st.success(message)
+                else:
+                    st.error(message)
+            except Exception as exc:
+                st.error(f'Не удалось добавить период: {exc}')
+
+    refresh_control_button = st.button('Обновить control-данные по текущим сегментам')
+    if refresh_control_button:
+        segments_path = Path(segments_path_str)
+        control_path = Path(control_path_str)
+        pipeline_script = Path(pipeline_path)
+        if rerun_after_update and not pipeline_script.exists():
+            st.error(f'Pipeline script не найден: {pipeline_script}')
+        else:
+            try:
+                ensure_segments_file(str(segments_path))
+                with st.spinner('Обновляю control-период...'):
+                    ok, message = refresh_control_data(
+                        segments_path=segments_path,
+                        output_path=control_path,
+                        rerun_pipeline_after_update=rerun_after_update,
+                        pipeline_path=pipeline_script,
+                    )
+                if ok:
+                    st.success(message)
+                else:
+                    st.error(message)
+            except Exception as exc:
+                st.error(f'Не удалось обновить control-период: {exc}')
+
 if rerun:
     script = Path(pipeline_path)
     if not script.exists():
         st.error(f'Pipeline script не найден: {script}')
     else:
         with st.spinner('Пересчитываю пайплайн...'):
-            result = subprocess.run([sys.executable, str(script)], capture_output=True, text=True)
+            result = run_pipeline_script(script)
         if result.returncode == 0:
             st.success('Пайплайн успешно пересчитан')
-            st.cache_data.clear()
+            refresh_all_cached_data()
         else:
             st.error('Пайплайн завершился с ошибкой')
             st.code(result.stderr or result.stdout)
