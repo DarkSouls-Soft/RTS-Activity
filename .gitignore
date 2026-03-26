@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+.coverage
+.python-version
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Streamlit
+.streamlit/secrets.toml
+.env
+.env.*
+
+# Local outputs
+rts_activity_outputs/*
+!rts_activity_outputs/
+!rts_activity_outputs/metrics.json
+!rts_activity_outputs/predictions.csv
+plots_us/
+*.png
+!images/
+!images/*.png
+*.log
+
+# Large raw / processed datasets
+RTS_5min_2015_2025_raw.csv
+ES_continuous_5m.csv
+ES_continuous_1m.csv
+ES_daily_RV.csv
+US_daily_master_dataset.csv
+RTS_daily_RV_with_dummies.csv
+!RTS_daily_RV_sample.csv
+!moex_control_daily.csv
+predictions.csv
+
+# Optional: keep metrics if you want visible benchmark results
+# metrics.json
