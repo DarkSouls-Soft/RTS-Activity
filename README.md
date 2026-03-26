@@ -34,9 +34,9 @@ Its scope is narrower and more practical:
 
 ### Video demo
 
-<video src="images/dashboard-demo.webm" controls muted loop playsinline width="100%"></video>
+![Dashboard demo](images/dashboard-demo.gif)
 
-If GitHub does not render the embedded player in your browser, open the file directly: [dashboard-demo.webm](images/dashboard-demo.webm).
+Direct file: [dashboard-demo.gif](images/dashboard-demo.gif)
 
 ### Main dashboard
 
@@ -80,6 +80,7 @@ If GitHub does not render the embedded player in your browser, open the file dir
 │   └── RESULTS.md
 ├── images/
 │   ├── about.png
+│   ├── dashboard-demo.gif
 │   ├── dashboard-demo.webm
 │   ├── diagnostic-info.png
 │   ├── main-info.png

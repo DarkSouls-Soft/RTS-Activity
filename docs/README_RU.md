@@ -6,7 +6,7 @@
 
 Проект объединяет:
 
-- прогноз realized volatility,
+- прогноз реализованной волатильности,
 - прогноз дневного объёма торгов,
 - классификацию режима активности,
 - и интерактивный Streamlit-дашборд для просмотра результатов.
@@ -35,9 +35,9 @@
 
 ### Видео-демо
 
-<video src="../images/dashboard-demo.webm" controls muted loop playsinline width="100%"></video>
+![Видео-демо дашборда](../images/dashboard-demo.gif)
 
-Если GitHub не показывает встроенный плеер в вашем браузере, откройте файл напрямую: [dashboard-demo.webm](../images/dashboard-demo.webm).
+Прямая ссылка на файл: [dashboard-demo.gif](../images/dashboard-demo.gif)
 
 ### Главный экран
 
@@ -81,6 +81,7 @@
 │   └── RESULTS.md
 ├── images/
 │   ├── about.png
+│   ├── dashboard-demo.gif
 │   ├── dashboard-demo.webm
 │   ├── diagnostic-info.png
 │   ├── main-info.png
