@@ -186,8 +186,3 @@ Metrics below come from the reduced public sample master dataset plus the MOEX c
 | Control (2026) | 0.6389 |
 | All OOS | 0.5843 |
 
-## Notes Before Publishing
-
-- License: [MIT](LICENSE)
-- Keep proprietary or heavy datasets outside the repository unless you explicitly want to distribute them.
-- If you later want to publish the full research history, do it as a separate archive or private data package, not as the default GitHub payload.
